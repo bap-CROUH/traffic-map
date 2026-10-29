@@ -1,0 +1,22 @@
+{
+  "name": "Bản Đồ Tránh Kẹt Xe",
+  "short_name": "Bản Đồ",
+  "description": "Ứng dụng dẫn đường tinh gọn, cập nhật kẹt xe thời gian thực",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+

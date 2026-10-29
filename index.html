@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Bản Đồ Tránh Kẹt Xe</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  
+  <!-- CẤU HÌNH DÀNH RIÊNG CHO IPHONE PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bản Đồ">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <!-- Font chữ SF Pro phong cách iOS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Bản đồ toàn màn hình -->
+  <div id="map"></div>
+
+  <!-- Thanh tìm kiếm trên đỉnh -->
+  <div class="top-bar">
+    <div class="search-box">
+      <svg class="icon search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="text" id="searchInput" placeholder="Tìm điểm đến (ví dụ: Chợ Bến Thành, Quận 1...)" autocomplete="off">
+      <button id="clearSearchBtn" class="clear-btn" style="display: none;">✕</button>
+    </div>
+    
+    <!-- Danh sách gợi ý địa điểm -->
+    <div id="searchResults" class="search-results" style="display: none;"></div>
+  </div>
+
+  <!-- Các nút tiện ích nổi (Phải) -->
+  <div class="action-buttons">
+    <button id="satelliteToggleBtn" class="floating-btn" title="Chuyển sang ảnh Vệ tinh">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+        <line x1="8" y1="2" x2="8" y2="18"></line>
+        <line x1="16" y1="6" x2="16" y2="22"></line>
+      </svg>
+      <span class="btn-label">Vệ tinh</span>
+    </button>
+
+    <button id="trafficToggleBtn" class="floating-btn active" title="Bật/Tắt hiển thị màu kẹt xe">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="6" r="3"></circle>
+        <circle cx="12" cy="12" r="3"></circle>
+        <circle cx="12" cy="18" r="3"></circle>
+      </svg>
+      <span class="btn-label">Giao thông</span>
+    </button>
+
+    <button id="recenterBtn" class="floating-btn" title="Về vị trí hiện tại của tôi">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Bảng thông tin lộ trình tránh kẹt xe (Phía dưới) -->
+  <div id="routeSheet" class="route-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-content">
+      <div class="route-header">
+        <div>
+          <span class="route-badge">Tuyến đường nhanh nhất</span>
+          <div class="route-time" id="routeDuration">-- phút</div>
+          <div class="route-traffic-status" id="trafficStatus">Mật độ: Thông thoáng</div>
+        </div>
+        <div class="route-distance-box">
+          <span class="distance-label">Khoảng cách</span>
+          <span class="route-distance" id="routeDistance">-- km</span>
+        </div>
+      </div>
+
+      <div class="route-actions">
+        <button id="startNavBtn" class="nav-btn primary">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Bắt đầu điều hướng
+        </button>
+        <button id="cancelRouteBtn" class="nav-btn secondary">Hủy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Thông báo trạng thái -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
