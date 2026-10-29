@@ -1,4 +1,4 @@
-const CACHE_NAME = "traffic-map-pwa-v1";
+const CACHE_NAME = "traffic-map-pwa-v3";
 const ASSETS = [
   "./",
   "./index.html",
