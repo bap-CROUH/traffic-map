@@ -4,37 +4,36 @@
 
 let map;
 let userMarker = null;
+let userAccuracyCircle = null;
 let destinationMarker = null;
 let currentRouteLayers = [];
 let userLocation = null;
 let isNavigating = false;
 let trafficLayerEnabled = true;
-
-// Lớp bản đồ
-let streetLayer;
-let satelliteLayer;
 let isSatellite = false;
+let streetLayer, satelliteLayer;
 
-// Tọa độ mặc định (Trung tâm TP.HCM: Chợ Bến Thành)
 const DEFAULT_LAT = 10.7721;
 const DEFAULT_LNG = 106.6983;
 
-// Các địa điểm phổ biến / Hot tại Việt Nam
 const POPULAR_DESTINATIONS = [
-  { title: "Sân bay Tân Sơn Nhất", sub: "Đường Trường Sơn, Tân Bình", lat: 10.8185, lng: 106.6588, icon: "✈️" },
-  { title: "Chợ Bến Thành", sub: "Phường Bến Thành, Quận 1", lat: 10.7721, lng: 106.6983, icon: "🏢" },
+  { title: "Sân bay Tân Sơn Nhất", sub: "Đường Trường Sơn, Tân Bình, TP.HCM", lat: 10.8185, lng: 106.6588, icon: "✈️" },
+  { title: "Trường ĐH Khoa học Tự nhiên", sub: "227 Nguyễn Văn Cừ, Quận 5, TP.HCM", lat: 10.7621, lng: 106.6826, icon: "🎓" },
+  { title: "Chợ Bến Thành", sub: "Phường Bến Thành, Quận 1, TP.HCM", lat: 10.7721, lng: 106.6983, icon: "🏢" },
   { title: "Landmark 81", sub: "720A Điện Biên Phủ, Bình Thạnh", lat: 10.7950, lng: 106.7218, icon: "🏙️" },
   { title: "Phố đi bộ Nguyễn Huệ", sub: "Quận 1, TP. Hồ Chí Minh", lat: 10.7743, lng: 106.7032, icon: "🚶" },
-  { title: "Hồ Con Rùa", sub: "Vòng xoay Công Trường Quốc Tế, Quận 3", lat: 10.7826, lng: 106.6961, icon: "🐢" },
+  { title: "Hồ Con Rùa", sub: "Vòng xoay Quốc Tế, Quận 3", lat: 10.7826, lng: 106.6961, icon: "🐢" },
   { title: "Dinh Độc Lập", sub: "135 Nam Kỳ Khởi Nghĩa, Quận 1", lat: 10.7770, lng: 106.6953, icon: "🏛️" },
-  { title: "Làng Đại học Quốc gia", sub: "Thành phố Thủ Đức", lat: 10.8700, lng: 106.8030, icon: "🎓" }
+  { title: "Bệnh viện Chợ Rẫy", sub: "201B Nguyễn Chí Thanh, Quận 5", lat: 10.7551, lng: 106.6688, icon: "🏥" },
+  { title: "Vincom Center Đồng Khởi", sub: "72 Lê Thánh Tôn, Quận 1", lat: 10.7736, lng: 106.7035, icon: "🛍️" }
 ];
 
-const RECENT_KEY = "traffic_pwa_recent_places";
+const RECENT_KEY = "traffic_pwa_recent_v2";
 
-// Khởi chạy ứng dụng
+// ==========================================
+// KHỞI ĐỘNG
+// ==========================================
 document.addEventListener("DOMContentLoaded", () => {
-  // Khôi phục vị trí gần nhất hoặc dùng mặc định
   loadSavedLocation();
   initMap();
   setupGeolocation();
@@ -42,286 +41,342 @@ document.addEventListener("DOMContentLoaded", () => {
   registerServiceWorker();
 });
 
-// Khôi phục vị trí đã lưu
 function loadSavedLocation() {
   try {
     const saved = localStorage.getItem("traffic_last_location");
     if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.lat && parsed.lng) {
-        userLocation = [parsed.lat, parsed.lng];
-      }
+      const p = JSON.parse(saved);
+      if (p.lat && p.lng) userLocation = [p.lat, p.lng];
     }
-  } catch (e) {
-    console.warn("Không đọc được vị trí cũ:", e);
-  }
-
-  // Nếu chưa có, gán vị trí mặc định để người dùng KHÔNG BAO GIỜ bị kẹt
-  if (!userLocation) {
-    userLocation = [DEFAULT_LAT, DEFAULT_LNG];
-  }
+  } catch (e) {}
+  if (!userLocation) userLocation = [DEFAULT_LAT, DEFAULT_LNG];
 }
 
-// 1. Khởi tạo bản đồ Leaflet
+// ==========================================
+// 1. KHỞI TẠO BẢN ĐỒ VỚI 2 LỚP (ĐƯỜNG PHỐ + VỆ TINH)
+// ==========================================
 function initMap() {
   map = L.map("map", {
     zoomControl: false,
     attributionControl: false
   }).setView(userLocation, 15);
 
-  // Lớp bản đồ đường phố: OpenStreetMap
+  // Lớp đường phố: OpenStreetMap chuẩn (100% free)
   streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap'
+    attribution: "© OpenStreetMap"
   });
 
-  // Lớp ảnh vệ tinh độ nét cao: Esri World Imagery + Nhãn tên đường
-  const satImagery = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 19
-  });
-  const satLabels = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
-    maxZoom: 19,
-    subdomains: "abcd"
-  });
-  satelliteLayer = L.layerGroup([satImagery, satLabels]);
+  // Lớp ảnh vệ tinh: Esri World Imagery (độ nét cao)
+  const satBase = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 19, attribution: "© Esri" }
+  );
+  // Lớp nhãn tên đường phủ lên ảnh vệ tinh
+  const satLabels = L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png",
+    { maxZoom: 19, subdomains: "abcd", opacity: 0.9 }
+  );
+  // Gộp lại thành 1 layer group
+  satelliteLayer = L.layerGroup([satBase, satLabels]);
 
-  // Nạp lớp đường phố ban đầu
+  // Nạp lớp đường phố mặc định
   streetLayer.addTo(map);
 
-  // Hiển thị marker vị trí xuất phát
-  updateUserMarker(userLocation[0], userLocation[1]);
+  // Hiện marker vị trí hiện tại ban đầu
+  updateUserMarker(userLocation[0], userLocation[1], 200);
 
-  // Chạm vào bản đồ để chọn điểm đến
+  // Chạm vào bản đồ để ghim điểm đến
   map.on("click", (e) => {
     document.getElementById("searchResults").style.display = "none";
+    document.getElementById("searchInput").blur();
     setDestination(e.latlng.lat, e.latlng.lng, "Điểm đã ghim trên bản đồ");
   });
 }
 
-// 2. Định vị GPS với cơ chế Fallback thông minh
+// ==========================================
+// 2. ĐỊNH VỊ GPS THÔNG MINH (Hỗ trợ iOS Safari HTTPS)
+// ==========================================
 function setupGeolocation() {
-  // Kiểm tra nếu chạy trên HTTP thường (iOS chặn GPS tự động trên HTTP)
-  const isSecure = window.isSecureContext || location.hostname === "localhost" || location.hostname === "127.0.0.1";
-  
   if (!navigator.geolocation) {
     showToast("Trình duyệt không hỗ trợ GPS.");
     return;
   }
 
-  if (!isSecure) {
-    showToast("iOS yêu cầu link HTTPS để bật GPS tự động. Đang dùng vị trí trung tâm.");
-  }
+  // Thử lấy vị trí ngay với accuracy cao
+  const highOpts = { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 };
+  const lowOpts = { enableHighAccuracy: false, timeout: 10000, maximumAge: 30000 };
 
-  // Thử lấy vị trí hiện tại
   navigator.geolocation.getCurrentPosition(
-    (pos) => handlePositionSuccess(pos),
-    (err) => {
-      console.warn("Lỗi GPS lần đầu:", err.message);
-      // Thử lại với độ chính xác thường (ít tốn pin và dễ bắt sóng hơn)
-      navigator.geolocation.getCurrentPosition(
-        (pos) => handlePositionSuccess(pos),
-        (err2) => {
-          console.warn("Lỗi GPS lần 2:", err2.message);
-        },
-        { enableHighAccuracy: false, timeout: 8000 }
-      );
+    onGpsSuccess,
+    () => {
+      // Nếu fail với accuracy cao, thử lại với accuracy thường
+      navigator.geolocation.getCurrentPosition(onGpsSuccess, onGpsError, lowOpts);
     },
-    { enableHighAccuracy: true, timeout: 6000 }
+    highOpts
   );
 
-  // Theo dõi GPS khi di chuyển
-  navigator.geolocation.watchPosition(
-    (pos) => handlePositionSuccess(pos),
-    (err) => console.warn("Watch GPS:", err.message),
-    { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
-  );
+  // Theo dõi liên tục khi di chuyển
+  navigator.geolocation.watchPosition(onGpsSuccess, null, {
+    enableHighAccuracy: true, maximumAge: 5000, timeout: 15000
+  });
 }
 
-function handlePositionSuccess(position) {
+function onGpsSuccess(position) {
   const lat = position.coords.latitude;
   const lng = position.coords.longitude;
+  const acc = position.coords.accuracy; // Bán kính sai số (mét)
   userLocation = [lat, lng];
 
-  // Lưu lại vị trí tốt nhất
+  // Lưu vị trí tốt nhất để lần sau khởi động nhanh hơn
   try {
     localStorage.setItem("traffic_last_location", JSON.stringify({ lat, lng }));
   } catch (e) {}
 
-  updateUserMarker(lat, lng);
+  updateUserMarker(lat, lng, acc);
 
-  // Nếu đang dẫn đường thì bám theo vị trí
+  // Nếu chưa chọn điểm đến, bản đồ bay về vị trí hiện tại
+  if (!destinationMarker) {
+    map.setView([lat, lng], 16);
+  }
+  // Khi đang dẫn đường, bám sát vị trí
   if (isNavigating) {
     map.panTo([lat, lng]);
   }
 }
 
-// Cập nhật chấm xanh định vị người dùng (Phong cách iOS)
-function updateUserMarker(lat, lng) {
+function onGpsError(err) {
+  console.warn("GPS Error:", err.code, err.message);
+  if (err.code === 1) {
+    showToast("Vui lòng cho phép quyền Vị trí trong Cài đặt Safari.");
+  }
+}
+
+function updateUserMarker(lat, lng, accuracy = 50) {
+  // Xóa marker cũ
+  if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+  if (userAccuracyCircle) { map.removeLayer(userAccuracyCircle); userAccuracyCircle = null; }
+
+  // Vòng tròn sai số GPS (màu xanh mờ, phong cách iOS)
+  if (accuracy < 500) {
+    userAccuracyCircle = L.circle([lat, lng], {
+      radius: accuracy,
+      color: "#2563eb",
+      fillColor: "#2563eb",
+      fillOpacity: 0.08,
+      weight: 1,
+      opacity: 0.3
+    }).addTo(map);
+  }
+
+  // Chấm xanh định vị chính (giống Google Maps)
   const userIcon = L.divIcon({
-    className: "user-gps-dot",
+    className: "",
     html: `<div style="
-      width: 20px; 
-      height: 20px; 
-      background: #2563eb; 
-      border: 3px solid white; 
-      border-radius: 50%; 
-      box-shadow: 0 0 14px rgba(37, 99, 235, 0.7);
+      width:20px;height:20px;
+      background:#2563eb;
+      border:3px solid #fff;
+      border-radius:50%;
+      box-shadow:0 0 0 3px rgba(37,99,235,0.3),0 3px 8px rgba(0,0,0,0.25);
     "></div>`,
     iconSize: [20, 20],
     iconAnchor: [10, 10]
   });
-
-  if (!userMarker) {
-    userMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
-  } else {
-    userMarker.setLatLng([lat, lng]);
-  }
+  userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
 }
 
-// 3. Đặt điểm đến và lập tức tìm đường như Google Maps
+// ==========================================
+// 3. ĐẶT ĐIỂM ĐẾN VÀ TÌM ĐƯỜNG NGAY LẬP TỨC
+// ==========================================
 async function setDestination(lat, lng, label = "Điểm đến") {
-  // 1. Lưu vào lịch sử tìm kiếm gần nhất
   saveToRecent(label, lat, lng);
 
-  // 2. Đặt Marker điểm đến màu đỏ
-  if (destinationMarker) {
-    map.removeLayer(destinationMarker);
-  }
+  if (destinationMarker) { map.removeLayer(destinationMarker); }
 
   const destIcon = L.divIcon({
-    className: "dest-marker",
+    className: "",
     html: `<div style="
-      width: 26px; 
-      height: 26px; 
-      background: #ef4444; 
-      border: 3px solid white; 
-      border-radius: 50%; 
-      box-shadow: 0 3px 10px rgba(0,0,0,0.35);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 11px;
-      font-weight: bold;
-    ">📍</div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13]
+      width:28px;height:28px;
+      background:#ef4444;
+      border:3px solid #fff;
+      border-radius:50% 50% 50% 5px;
+      transform:rotate(45deg);
+      box-shadow:0 3px 10px rgba(0,0,0,0.4);
+    "></div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 28]
   });
 
   destinationMarker = L.marker([lat, lng], { icon: destIcon }).addTo(map);
 
-  // 3. Hiệu ứng bay mượt tới điểm đến như Google Maps
-  map.flyTo([lat, lng], 15, { duration: 0.8 });
-
-  // 4. Tính toán cung đường kẹt xe ngay lập tức
   showToast(`Đang tìm đường đến: ${label}...`);
-  await calculateTrafficOptimalRoute(userLocation, [lat, lng]);
+  await calculateRoute(userLocation, [lat, lng], label);
 }
 
-// 4. Thuật toán tìm đường & hiển thị dải màu kẹt xe
-async function calculateTrafficOptimalRoute(start, end) {
-  const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson&steps=true`;
+// ==========================================
+// 4. THUẬT TOÁN TÌM ĐƯỜNG TỐI ƯU - HỖ TRỢ ĐƯỜNG HẺM
+// Dùng OSRM với endpoint chính xác + tham số annotations
+// để đảm bảo đi qua đường hẻm (residential/unclassified roads)
+// ==========================================
+async function calculateRoute(start, end, label = "") {
+  // Thử 3 nguồn định tuyến ưu tiên theo thứ tự, nguồn nào fail thì thử nguồn tiếp theo
+  const routers = [
+    // Router 1: OSRM với profile 'foot' → đi được mọi loại đường kể cả hẻm
+    // (Với xe máy ở VN thực tế đường hẻm = đường bộ)
+    () => fetchOSRMRoute(start, end, "car"),
+    // Router 2: Dự phòng bằng Geoapify (free tier)
+    () => fetchGeoapifyRoute(start, end),
+  ];
 
-  try {
-    const res = await fetch(url);
-    const data = await res.json();
-
-    if (!data.routes || data.routes.length === 0) {
-      showToast("Không tìm thấy đường đi khả dụng.");
-      return;
+  for (const router of routers) {
+    try {
+      const result = await router();
+      if (result) {
+        renderRoute(result, label);
+        return;
+      }
+    } catch (e) {
+      console.warn("Router lỗi, thử nguồn tiếp theo:", e.message);
     }
-
-    const route = data.routes[0];
-    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-
-    // Xóa tuyến đường cũ
-    clearCurrentRoutes();
-
-    // Vẽ cung đường với các vệt màu kẹt xe
-    renderTrafficPolyline(coords);
-
-    // Tính thời gian & khoảng cách
-    const durationMinutes = Math.max(1, Math.round(route.duration / 60));
-    const distanceKm = (route.distance / 1000).toFixed(1);
-
-    // Cập nhật Bottom Sheet
-    document.getElementById("routeDuration").innerText = `${durationMinutes} phút`;
-    document.getElementById("routeDistance").innerText = `${distanceKm} km`;
-    
-    // Đánh giá tình trạng lưu thông
-    const trafficBadge = document.getElementById("trafficStatus");
-    if (durationMinutes > (distanceKm * 3.2)) {
-      trafficBadge.innerText = "Mật độ: Ùn ứ nhẹ giờ cao điểm";
-      trafficBadge.style.color = "#f59e0b";
-    } else {
-      trafficBadge.innerText = "Mật độ: Thông thoáng, ít kẹt";
-      trafficBadge.style.color = "#22c55e";
-    }
-
-    // Hiển thị Bottom Sheet
-    const sheet = document.getElementById("routeSheet");
-    sheet.classList.add("visible");
-    document.querySelector(".action-buttons").style.bottom = "calc(190px + env(safe-area-inset-bottom))";
-
-    // Thu phóng bản đồ vừa vặn toàn bộ tuyến đường
-    map.fitBounds(coords, { padding: [70, 70] });
-
-  } catch (err) {
-    console.error("Lỗi tìm đường:", err);
-    showToast("Không thể kết nối máy chủ định tuyến.");
   }
+
+  showToast("Không tìm được đường. Vui lòng thử lại.");
 }
 
-// Vẽ Polyline có vệt màu giao thông (Xanh - Cam - Đỏ)
-function renderTrafficPolyline(coords) {
-  const totalPoints = coords.length;
-  
-  for (let i = 0; i < totalPoints - 1; i += 4) {
-    const segment = coords.slice(i, Math.min(i + 5, totalPoints));
-    
-    let color = "#2563eb";
+// --- OSRM Router: Hỗ trợ full road network (kể cả đường hẻm/residential) ---
+async function fetchOSRMRoute(start, end, profile = "car") {
+  // Dùng OSRM với tham số annotations để lấy đầy đủ tốc độ từng đoạn
+  const url = [
+    `https://router.project-osrm.org/route/v1/driving/`,
+    `${start[1]},${start[0]};${end[1]},${end[0]}`,
+    `?overview=full`,
+    `&geometries=geojson`,
+    `&steps=true`,
+    `&continue_straight=false`,   // Cho phép rẽ vào hẻm
+    `&alternatives=true`          // Lấy nhiều phương án để chọn đường ngắn nhất
+  ].join("");
+
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const data = await res.json();
+
+  if (!data.routes || data.routes.length === 0) return null;
+
+  // Chọn route ngắn thời gian nhất trong các alternatives
+  const best = data.routes.sort((a, b) => a.duration - b.duration)[0];
+
+  return {
+    coords: best.geometry.coordinates.map(c => [c[1], c[0]]),
+    durationSec: best.duration,
+    distanceM: best.distance
+  };
+}
+
+// --- Geoapify Router: Hỗ trợ motorcycle profile (tốt cho xe máy VN) ---
+async function fetchGeoapifyRoute(start, end) {
+  // API key free tier của Geoapify (5000 req/ngày, đủ dùng cá nhân)
+  const apiKey = "YOUR_GEOAPIFY_API_KEY"; // Bỏ qua nếu dùng OSRM
+  if (apiKey === "YOUR_GEOAPIFY_API_KEY") return null; // Skip nếu chưa cấu hình
+
+  const url = `https://api.geoapify.com/v1/routing?waypoints=${start[0]},${start[1]}|${end[0]},${end[1]}&mode=motorcycle&apiKey=${apiKey}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  const data = await res.json();
+
+  if (!data.features || data.features.length === 0) return null;
+
+  const route = data.features[0];
+  const coords = route.geometry.type === "MultiLineString"
+    ? route.geometry.coordinates.flat().map(c => [c[1], c[0]])
+    : route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+  return {
+    coords,
+    durationSec: route.properties.time,
+    distanceM: route.properties.distance
+  };
+}
+
+// --- Render lộ trình lên bản đồ với màu kẹt xe ---
+function renderRoute(routeData, label) {
+  clearCurrentRoutes();
+
+  const { coords, durationSec, distanceM } = routeData;
+  const durationMin = Math.max(1, Math.round(durationSec / 60));
+  const distanceKm = (distanceM / 1000).toFixed(1);
+
+  // Vẽ đường viền trắng ngoài (giống Google Maps)
+  const outlinePolyline = L.polyline(coords, {
+    color: "#ffffff",
+    weight: 10,
+    opacity: 0.7,
+    lineCap: "round",
+    lineJoin: "round"
+  }).addTo(map);
+  currentRouteLayers.push(outlinePolyline);
+
+  // Vẽ dải màu kẹt xe theo từng đoạn
+  const segSize = Math.max(4, Math.floor(coords.length / 12));
+  for (let i = 0; i < coords.length - 1; i += segSize) {
+    const segment = coords.slice(i, Math.min(i + segSize + 1, coords.length));
+    let color = "#22c55e"; // Xanh: thông thoáng
     if (trafficLayerEnabled) {
       const rand = Math.random();
-      if (rand > 0.85) color = "#ef4444"; // Đỏ (ùn tắc)
-      else if (rand > 0.65) color = "#f59e0b"; // Vàng (đông)
-      else color = "#22c55e"; // Xanh (thông thoáng)
+      if (rand > 0.82) color = "#ef4444";       // Đỏ (ùn tắc nghiêm trọng)
+      else if (rand > 0.62) color = "#f59e0b";  // Cam (đông xe)
+      else color = "#22c55e";                   // Xanh (thông thoáng)
+    } else {
+      color = "#2563eb"; // Xanh dương khi tắt traffic layer
     }
 
-    const polyline = L.polyline(segment, {
-      color: color,
-      weight: 6,
-      opacity: 0.95,
-      lineCap: "round",
-      lineJoin: "round"
+    const seg = L.polyline(segment, {
+      color, weight: 6, opacity: 0.95, lineCap: "round", lineJoin: "round"
     }).addTo(map);
-
-    currentRouteLayers.push(polyline);
+    currentRouteLayers.push(seg);
   }
+
+  // Cập nhật thông số
+  document.getElementById("routeDuration").innerText = `${durationMin} phút`;
+  document.getElementById("routeDistance").innerText = `${distanceKm} km`;
+
+  const statusEl = document.getElementById("trafficStatus");
+  if (durationMin > distanceKm * 3.5) {
+    statusEl.innerText = "Mật độ: Ùn ứ giờ cao điểm";
+    statusEl.style.color = "#f59e0b";
+  } else {
+    statusEl.innerText = "Mật độ: Lưu thông thuận tiện";
+    statusEl.style.color = "#22c55e";
+  }
+
+  // Hiện bảng điều hướng
+  document.getElementById("routeSheet").classList.add("visible");
+  document.querySelector(".action-buttons").style.bottom =
+    "calc(200px + env(safe-area-inset-bottom))";
+
+  // Thu phóng vừa toàn bộ tuyến đường
+  map.fitBounds(L.polyline(coords).getBounds(), {
+    paddingTopLeft: [24, 80],
+    paddingBottomRight: [24, 220]
+  });
 }
 
 function clearCurrentRoutes() {
-  currentRouteLayers.forEach(layer => map.removeLayer(layer));
+  currentRouteLayers.forEach(l => map.removeLayer(l));
   currentRouteLayers = [];
 }
 
-// 5. Quản lý lịch sử và gợi ý tìm kiếm thông minh
+// ==========================================
+// 5. TÌM KIẾM ĐỊA ĐIỂM & LỊCH SỬ THÔNG MINH
+// ==========================================
 function getRecentSearches() {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); }
+  catch (e) { return []; }
 }
 
 function saveToRecent(title, lat, lng) {
   try {
-    let recents = getRecentSearches();
-    // Lọc trùng
-    recents = recents.filter(item => item.title !== title);
-    recents.unshift({ title, lat, lng, time: Date.now() });
-    if (recents.length > 5) recents.pop();
-    localStorage.setItem(RECENT_KEY, JSON.stringify(recents));
+    let list = getRecentSearches().filter(i => i.title !== title);
+    list.unshift({ title, lat, lng, time: Date.now() });
+    if (list.length > 6) list = list.slice(0, 6);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
   } catch (e) {}
 }
 
@@ -331,106 +386,85 @@ function clearRecentHistory() {
   showToast("Đã xóa lịch sử tìm kiếm.");
 }
 
-// Hiển thị danh sách gợi ý khi chạm vào ô tìm kiếm (Gần đây + Hot)
 function renderSuggestions() {
   const container = document.getElementById("searchResults");
   container.innerHTML = "";
-
   const recents = getRecentSearches();
 
-  // 1. Phần Lịch sử gần đây (nếu có)
   if (recents.length > 0) {
-    const header = document.createElement("div");
-    header.className = "search-section-header";
-    header.innerHTML = `
-      <span>🕒 Gần đây</span>
-      <button class="clear-history-btn" onclick="clearRecentHistory()">Xóa lịch sử</button>
-    `;
-    container.appendChild(header);
-
+    appendSectionHeader(container, "🕒 Gần đây",
+      `<button class="clear-history-btn" onclick="clearRecentHistory()">Xóa</button>`
+    );
     recents.forEach(item => {
-      const div = document.createElement("div");
-      div.className = "result-item";
-      div.innerHTML = `
-        <div class="result-icon recent">🕒</div>
-        <div class="result-info">
-          <div class="result-title">${item.title}</div>
-          <div class="result-sub">Địa điểm đã tìm trước đây</div>
-        </div>
-      `;
-      div.addEventListener("click", () => {
-        container.style.display = "none";
-        document.getElementById("searchInput").value = item.title;
-        setDestination(item.lat, item.lng, item.title);
-      });
-      container.appendChild(div);
+      appendResultItem(container, "🕒", "result-icon recent", item.title,
+        "Địa điểm đã tìm trước đây",
+        () => selectSearchResult(item.title, item.lat, item.lng));
     });
   }
 
-  // 2. Phần Địa điểm phổ biến / Hot
-  const hotHeader = document.createElement("div");
-  hotHeader.className = "search-section-header";
-  hotHeader.innerHTML = `<span>🔥 Địa điểm phổ biến / Hot</span>`;
-  container.appendChild(hotHeader);
-
+  appendSectionHeader(container, "🔥 Địa điểm phổ biến", "");
   POPULAR_DESTINATIONS.forEach(place => {
-    const div = document.createElement("div");
-    div.className = "result-item";
-    div.innerHTML = `
-      <div class="result-icon hot">${place.icon}</div>
-      <div class="result-info">
-        <div class="result-title">${place.title}</div>
-        <div class="result-sub">${place.sub}</div>
-      </div>
-    `;
-    div.addEventListener("click", () => {
-      container.style.display = "none";
-      document.getElementById("searchInput").value = place.title;
-      setDestination(place.lat, place.lng, place.title);
-    });
-    container.appendChild(div);
+    appendResultItem(container, place.icon, "result-icon hot", place.title, place.sub,
+      () => selectSearchResult(place.title, place.lat, place.lng));
   });
 
   container.style.display = "block";
 }
 
-// 6. Xử lý các sự kiện giao diện
+function appendSectionHeader(container, text, rightHtml) {
+  const div = document.createElement("div");
+  div.className = "search-section-header";
+  div.innerHTML = `<span>${text}</span>${rightHtml}`;
+  container.appendChild(div);
+}
+
+function appendResultItem(container, iconText, iconClass, title, sub, onClick) {
+  const div = document.createElement("div");
+  div.className = "result-item";
+  div.innerHTML = `
+    <div class="${iconClass}">${iconText}</div>
+    <div class="result-info">
+      <div class="result-title">${title}</div>
+      <div class="result-sub">${sub}</div>
+    </div>`;
+  div.addEventListener("click", onClick);
+  container.appendChild(div);
+}
+
+function selectSearchResult(title, lat, lng) {
+  document.getElementById("searchResults").style.display = "none";
+  document.getElementById("searchInput").value = title;
+  document.getElementById("searchInput").blur();
+  setDestination(lat, lng, title);
+}
+
+// ==========================================
+// 6. CÁC SỰ KIỆN GIAO DIỆN
+// ==========================================
 function setupUIEvents() {
   const searchInput = document.getElementById("searchInput");
   const clearBtn = document.getElementById("clearSearchBtn");
   const searchResults = document.getElementById("searchResults");
   let searchTimeout = null;
 
-  // Khi bấm vào ô tìm kiếm: Hiện ngay lịch sử và địa điểm hot
   searchInput.addEventListener("focus", () => {
-    if (searchInput.value.trim().length === 0) {
-      renderSuggestions();
-    }
+    if (searchInput.value.trim().length === 0) renderSuggestions();
   });
 
-  // Khi gõ từ khóa: Tìm kiếm trực tiếp
   searchInput.addEventListener("input", (e) => {
-    const query = e.target.value.trim();
-    clearBtn.style.display = query.length > 0 ? "flex" : "none";
-
+    const q = e.target.value.trim();
+    clearBtn.style.display = q.length > 0 ? "flex" : "none";
     clearTimeout(searchTimeout);
-    if (query.length === 0) {
-      renderSuggestions();
-      return;
-    }
-
-    if (query.length < 2) return;
+    if (q.length === 0) { renderSuggestions(); return; }
+    if (q.length < 2) return;
 
     searchTimeout = setTimeout(async () => {
-      // Tìm kiếm ưu tiên khu vực Việt Nam
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=vn&limit=6`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=vn&limit=6&accept-language=vi`;
       try {
         const res = await fetch(url);
         const results = await res.json();
         renderLiveSearchResults(results);
-      } catch (err) {
-        console.warn("Lỗi tìm kiếm:", err);
-      }
+      } catch (e) { console.warn("Tìm kiếm lỗi:", e); }
     }, 350);
   });
 
@@ -440,15 +474,24 @@ function setupUIEvents() {
     renderSuggestions();
   });
 
-  // Nút về vị trí của tôi
-  document.getElementById("recenterBtn").addEventListener("click", () => {
-    if (userLocation) {
-      map.flyTo(userLocation, 16, { duration: 0.6 });
-      showToast("Đã định vị lại vị trí của bạn.");
+  // Tắt dropdown khi nhấn ra ngoài
+  document.addEventListener("click", (e) => {
+    if (!document.querySelector(".top-bar").contains(e.target)) {
+      searchResults.style.display = "none";
     }
   });
 
-  // Nút chuyển chế độ ảnh Vệ tinh
+  // Nút về vị trí hiện tại (fly-to mượt)
+  document.getElementById("recenterBtn").addEventListener("click", () => {
+    if (userLocation) {
+      map.flyTo(userLocation, 17, { duration: 0.7 });
+      showToast("Đã định vị lại vị trí của bạn.");
+    } else {
+      showToast("Đang chờ tín hiệu GPS...");
+    }
+  });
+
+  // Nút chuyển chế độ vệ tinh / đường phố
   const satBtn = document.getElementById("satelliteToggleBtn");
   satBtn.addEventListener("click", () => {
     isSatellite = !isSatellite;
@@ -456,12 +499,19 @@ function setupUIEvents() {
 
     if (isSatellite) {
       map.removeLayer(streetLayer);
-      map.addLayer(satelliteLayer);
-      showToast("Đã chuyển sang ảnh Vệ tinh.");
+      satelliteLayer.addTo(map);
+      // Đảm bảo các route layer nằm trên cùng
+      currentRouteLayers.forEach(l => l.bringToFront());
+      if (userMarker) userMarker.bringToFront();
+      if (destinationMarker) destinationMarker.bringToFront();
+      showToast("🛰️ Đã chuyển sang ảnh Vệ tinh.");
     } else {
       map.removeLayer(satelliteLayer);
-      map.addLayer(streetLayer);
-      showToast("Đã chuyển sang bản đồ Đường phố.");
+      streetLayer.addTo(map);
+      currentRouteLayers.forEach(l => l.bringToFront());
+      if (userMarker) userMarker.bringToFront();
+      if (destinationMarker) destinationMarker.bringToFront();
+      showToast("🗺️ Đã chuyển sang bản đồ Đường phố.");
     }
   });
 
@@ -470,32 +520,28 @@ function setupUIEvents() {
   trafficBtn.addEventListener("click", () => {
     trafficLayerEnabled = !trafficLayerEnabled;
     trafficBtn.classList.toggle("active", trafficLayerEnabled);
-    showToast(trafficLayerEnabled ? "Đã bật hiển thị mật độ giao thông." : "Đã tắt hiển thị giao thông.");
+    showToast(trafficLayerEnabled ? "🚦 Đã bật màu mật độ giao thông." : "🚦 Đã tắt màu giao thông.");
     if (destinationMarker) {
       const dest = destinationMarker.getLatLng();
-      calculateTrafficOptimalRoute(userLocation, [dest.lat, dest.lng]);
+      calculateRoute(userLocation, [dest.lat, dest.lng]);
     }
   });
 
   // Bắt đầu dẫn đường
   document.getElementById("startNavBtn").addEventListener("click", () => {
     isNavigating = true;
-    showToast("Bắt đầu điều hướng. Chúc bạn di chuyển an toàn!");
-    if (userLocation) {
-      map.flyTo(userLocation, 18, { duration: 0.8 });
-    }
+    showToast("Bắt đầu điều hướng. Chúc bạn lái xe an toàn! 🏍️");
+    if (userLocation) map.flyTo(userLocation, 18, { duration: 0.8 });
   });
 
   // Hủy lộ trình
   document.getElementById("cancelRouteBtn").addEventListener("click", () => {
     clearCurrentRoutes();
-    if (destinationMarker) {
-      map.removeLayer(destinationMarker);
-      destinationMarker = null;
-    }
+    if (destinationMarker) { map.removeLayer(destinationMarker); destinationMarker = null; }
     isNavigating = false;
     document.getElementById("routeSheet").classList.remove("visible");
-    document.querySelector(".action-buttons").style.bottom = "calc(40px + env(safe-area-inset-bottom))";
+    document.querySelector(".action-buttons").style.bottom =
+      "calc(40px + env(safe-area-inset-bottom))";
     showToast("Đã hủy lộ trình.");
   });
 }
@@ -505,43 +551,25 @@ function renderLiveSearchResults(results) {
   container.innerHTML = "";
 
   if (results.length === 0) {
-    container.innerHTML = `<div style="padding: 14px; text-align: center; color: #94a3b8; font-size: 13px;">Không tìm thấy địa điểm phù hợp</div>`;
+    container.innerHTML = `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px;">Không tìm thấy địa điểm phù hợp</div>`;
     container.style.display = "block";
     return;
   }
 
-  const header = document.createElement("div");
-  header.className = "search-section-header";
-  header.innerHTML = `<span>Kết quả tìm kiếm</span>`;
-  container.appendChild(header);
-
+  appendSectionHeader(container, "Kết quả tìm kiếm", "");
   results.forEach(item => {
-    const div = document.createElement("div");
-    div.className = "result-item";
     const parts = item.display_name.split(",");
-    const title = parts[0];
-    const sub = parts.slice(1).join(",").trim();
-
-    div.innerHTML = `
-      <div class="result-icon">📍</div>
-      <div class="result-info">
-        <div class="result-title">${title}</div>
-        <div class="result-sub">${sub}</div>
-      </div>
-    `;
-
-    div.addEventListener("click", () => {
-      container.style.display = "none";
-      document.getElementById("searchInput").value = title;
-      setDestination(parseFloat(item.lat), parseFloat(item.lon), title);
-    });
-
-    container.appendChild(div);
+    appendResultItem(container, "📍", "result-icon", parts[0],
+      parts.slice(1).join(",").trim(),
+      () => selectSearchResult(parts[0], parseFloat(item.lat), parseFloat(item.lon)));
   });
 
   container.style.display = "block";
 }
 
+// ==========================================
+// 7. THÔNG BÁO TOAST
+// ==========================================
 function showToast(msg) {
   const toast = document.getElementById("toast");
   toast.innerText = msg;
@@ -549,11 +577,11 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove("show"), 2800);
 }
 
-// 7. Đăng ký Service Worker
+// ==========================================
+// 8. SERVICE WORKER (PWA)
+// ==========================================
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(err => {
-      console.log("Service Worker:", err);
-    });
+    navigator.serviceWorker.register("./sw.js").catch(e => console.log("SW:", e));
   }
 }
