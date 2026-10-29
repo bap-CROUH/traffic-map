@@ -1,37 +1,18 @@
-const CACHE_NAME = "traffic-map-pwa-v3";
-const ASSETS = [
-  "./",
-  "./index.html",
-  "./style.css",
-  "./app.js",
-  "./manifest.json",
-  "./icon.svg"
-];
-
+// Self unregister and clear all stale caches
 self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) return caches.delete(key);
-        })
-      );
+      return Promise.all(keys.map((k) => caches.delete(k)));
     })
   );
   self.clients.claim();
 });
 
 self.addEventListener("fetch", (e) => {
-  // Network first, fallback to cache for offline usage
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
-  );
+  // Always fetch fresh from network
+  e.respondWith(fetch(e.request));
 });
-
